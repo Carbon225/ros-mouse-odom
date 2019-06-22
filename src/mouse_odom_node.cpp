@@ -33,19 +33,25 @@ int main(int argc, char **argv) {
 
     ros::Time current_time, last_time;
     current_time = ros::Time::now();
-    last_time = ros::Time::now();
+    last_time = current_time;
 
     int in = -1;
 
     MouseMove deltaPos;
 
-    in = open("/dev/input/mouse0", O_RDONLY);
+    std::string device_name;
+    ros::param::get("~device", device_name);
+
+    ROS_INFO("Opening %s", device_name.c_str());
+
+    in = open(device_name.c_str(), O_RDONLY);
 
     while (ros::ok()) {
         deltaPos = getMouseMove(in);
+        current_time = ros::Time::now();
+
         ROS_DEBUG("x : %d | y : %d \n", deltaPos.x, deltaPos.y);
 
-        current_time = ros::Time::now();
         double dt = (current_time - last_time).toSec();
 
         // convert DPI to meters
