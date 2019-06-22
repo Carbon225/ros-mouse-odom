@@ -13,7 +13,7 @@ MouseMove getMouseMove(int mouseToCapture)
     n_read = read(mouseToCapture, buffer, 3);
 
     if (n_read == -1) {
-        ROS_WARN("Error occured when tring to capture mouse movement\n");
+        ROS_WARN("Error occurred when trying to capture mouse movement\n");
     }
 
     bool x_negative = buffer[0] >> 4 & 1;
