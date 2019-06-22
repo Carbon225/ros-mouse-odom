@@ -114,7 +114,7 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-# include
+  include
   ${catkin_INCLUDE_DIRS}
 )
 
@@ -148,8 +148,16 @@ include_directories(
 #   ${catkin_LIBRARIES}
 # )
 
+add_library(mouseX_reader src/mouseX_reader.cpp)
+add_library(eventX_reader src/eventX_reader.cpp)
+
+target_link_libraries(mouseX_reader ${catkin_LIBRARIES})
+target_link_libraries(eventX_reader ${catkin_LIBRARIES})
+
 add_executable(mouse_odom_node src/mouse_odom_node.cpp)
-target_link_libraries(mouse_odom_node ${catkin_LIBRARIES})
+add_dependencies(mouse_odom_node mouseX_reader eventX_reader)
+target_link_libraries(mouse_odom_node mouseX_reader eventX_reader
+        ${catkin_LIBRARIES})
 
 #############
 ## Install ##

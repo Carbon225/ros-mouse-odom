@@ -7,14 +7,9 @@
 
 #include <unistd.h>
 #include <fcntl.h>
+#include <mouseX_reader.h>
+#include <eventX_reader.h>
 
-struct MouseMove
-{
-    int x = 0;
-    int y = 0;
-};
-
-MouseMove getMouseMove(int mouseToCapture);
 
 int main(int argc, char **argv) {
     ros::init(argc, argv, "mouse_odom_node");
@@ -22,6 +17,11 @@ int main(int argc, char **argv) {
 
     ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("mouse_odom", 256);
     tf2_ros::TransformBroadcaster transformBroadcaster;
+
+    bool event_mode = false;
+    if (!ros::param::get("~event_mode", event_mode)) {
+        event_mode = true;
+    }
 
     double x = 0.f;
     double y = 0.f;
@@ -47,7 +47,11 @@ int main(int argc, char **argv) {
     in = open(device_name.c_str(), O_RDONLY);
 
     while (ros::ok()) {
-        deltaPos = getMouseMove(in);
+        if (!event_mode)
+            deltaPos = getMouseMove(in);
+        else
+            deltaPos = getMouseMoveEvent(in);
+
         current_time = ros::Time::now();
 
         ROS_DEBUG("x : %d | y : %d \n", deltaPos.x, deltaPos.y);
@@ -115,25 +119,4 @@ int main(int argc, char **argv) {
     ROS_ERROR("Couldn't open mouse\n");
 
     return 0;
-}
-
-MouseMove getMouseMove(int mouseToCapture)
-{
-    unsigned char buffer[3];
-    int n_read = -1;
-    MouseMove result;
-
-    n_read = read(mouseToCapture, buffer, 3);
-
-    if (n_read == -1) {
-        ROS_WARN("Error occured when tring to capture mouse movement\n");
-    }
-
-    bool x_negative = buffer[0] >> 4 & 1;
-    bool y_negative = buffer[0] >> 5 & 1;
-
-    result.x = buffer[1] - (x_negative ? 256 : 0);
-    result.y = buffer[2] - (y_negative ? 256 : 0);
-
-    return result;
 }
