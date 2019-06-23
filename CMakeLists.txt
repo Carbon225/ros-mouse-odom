@@ -159,6 +159,12 @@ add_dependencies(mouse_odom_node mouseX_reader eventX_reader)
 target_link_libraries(mouse_odom_node mouseX_reader eventX_reader
         ${catkin_LIBRARIES})
 
+add_executable(odom_combiner_node src/odom_combiner_node.cpp)
+target_link_libraries(odom_combiner_node
+        ${catkin_LIBRARIES})
+
+
+
 #############
 ## Install ##
 #############

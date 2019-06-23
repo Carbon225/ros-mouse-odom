@@ -2,8 +2,6 @@
 
 #include <nav_msgs/Odometry.h>
 #include <tf2/LinearMath/Quaternion.h>
-#include <tf2/impl/convert.h>
-#include <tf2_ros/transform_broadcaster.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -11,12 +9,14 @@
 #include <eventX_reader.h>
 
 
+#define DOTS2M(dots, dpi) dots * 0.0254 / dpi
+
+
 int main(int argc, char **argv) {
     ros::init(argc, argv, "mouse_odom_node");
     ros::NodeHandle nh;
 
     ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("mouse_odom", 256);
-    tf2_ros::TransformBroadcaster transformBroadcaster;
 
     bool event_mode = false;
     if (!ros::param::get("~event_mode", event_mode)) {
@@ -59,8 +59,12 @@ int main(int argc, char **argv) {
         double dt = (current_time - last_time).toSec();
 
         // convert DPI to meters
-        double delta_x = (double)deltaPos.x / 20000.f;
-        double delta_y = (double)deltaPos.y / 20000.f;
+        int dpi = 1000;
+        if (!ros::param::get("~dpi", dpi))
+            ROS_WARN("DPI not set");
+
+        double delta_x = DOTS2M((double)deltaPos.x, dpi);
+        double delta_y = DOTS2M((double)deltaPos.y, dpi);
         double delta_th = vth * dt;
 
         // calculate speed
@@ -80,33 +84,26 @@ int main(int argc, char **argv) {
         odom_quat.z = tf_quat.z();
         odom_quat.w = tf_quat.w();
 
-        geometry_msgs::TransformStamped odom_trans;
-        odom_trans.header.stamp = current_time;
-        odom_trans.header.frame_id = "odom";
-        odom_trans.child_frame_id = "base_link";
-
-        odom_trans.transform.translation.x = x;
-        odom_trans.transform.translation.y = y;
-        odom_trans.transform.translation.z = 0.025;
-        odom_trans.transform.rotation = odom_quat;
-
-        transformBroadcaster.sendTransform(odom_trans);
+        std::string mouse_frame = "base_link";
+        if (!ros::param::get("~frame_id", mouse_frame))
+            ROS_WARN("No frame_id for mouse %s", device_name.c_str());
 
         nav_msgs::Odometry odom;
         odom.header.stamp = current_time;
-        odom.header.frame_id = "odom";
+        // how the ground moved in relation to the mouse
+        odom.header.frame_id = mouse_frame;
+        odom.child_frame_id = "odom";
 
         //set the position
-        odom.pose.pose.position.x = x;
-        odom.pose.pose.position.y = y;
-        odom.pose.pose.position.z = 0.025;
-        odom.pose.pose.orientation = odom_quat;
+        odom.pose.pose.position.x = -x;
+        odom.pose.pose.position.y = -y;
+        odom.pose.pose.position.z = 0; // ignore
+        odom.pose.pose.orientation = odom_quat; // ignore
 
         //set the velocity
-        odom.child_frame_id = "base_link";
-        odom.twist.twist.linear.x = vx;
-        odom.twist.twist.linear.y = vy;
-        odom.twist.twist.angular.z = vth;
+        odom.twist.twist.linear.x = -vx;
+        odom.twist.twist.linear.y = -vy;
+        odom.twist.twist.angular.z = vth; // ignore
 
         //publish the message
         odom_pub.publish(odom);
