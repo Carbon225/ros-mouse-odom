@@ -19,8 +19,10 @@ MouseMove getMouseMove(int mouseToCapture)
     bool x_negative = buffer[0] >> 4 & 1;
     bool y_negative = buffer[0] >> 5 & 1;
 
-    result.x = buffer[1] - (x_negative ? 256 : 0);
-    result.y = buffer[2] - (y_negative ? 256 : 0);
+    // swap x/y (REP 103)
+    result.y = buffer[1] - (x_negative ? 256 : 0);
+    result.y *= -1;
+    result.x = buffer[2] - (y_negative ? 256 : 0);
 
     return result;
 }
