@@ -2,6 +2,7 @@
 
 #include <nav_msgs/Odometry.h>
 #include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Transform.h>
 #include <tf2_ros/transform_broadcaster.h>
 
 
@@ -24,24 +25,39 @@ int main(int argc, char **argv) {
 
 void odomCallback(const nav_msgs::Odometry odom)
 {
+    // transform base_link -> odom
+    tf2::Transform tf_transform;
+
+    // rotation component
     tf2::Quaternion tf_quat;
-    tf_quat.setRPY(0.f, 0.f, 0.f);
+    tf_quat.setRPY(0.f, 0.f, 1.f);
 
-    geometry_msgs::Quaternion odom_quat;
-    odom_quat.x = tf_quat.x();
-    odom_quat.y = tf_quat.y();
-    odom_quat.z = tf_quat.z();
-    odom_quat.w = tf_quat.w();
+    // translation component
+    tf2::Vector3 tf_vector;
+    tf_vector.setX(odom.pose.pose.position.x);
+    tf_vector.setY(odom.pose.pose.position.y);
+    tf_vector.setZ(-0.025);
 
+    tf_transform.setOrigin(tf_vector);
+    tf_transform.setRotation(tf_quat);
+
+    // inverse transform to get odom -> base_link
+    tf_transform = tf_transform.inverse();
+
+    // compose transform message
     geometry_msgs::TransformStamped odom_trans;
     odom_trans.header.stamp = ros::Time::now();
     odom_trans.header.frame_id = "odom";
     odom_trans.child_frame_id = "base_link";
 
-    odom_trans.transform.translation.x = -odom.pose.pose.position.x;
-    odom_trans.transform.translation.y = -odom.pose.pose.position.y;
-    odom_trans.transform.translation.z = 0.025;
-    odom_trans.transform.rotation = odom_quat;
+    odom_trans.transform.translation.x = tf_transform.getOrigin().x();
+    odom_trans.transform.translation.y = tf_transform.getOrigin().y();
+    odom_trans.transform.translation.z = tf_transform.getOrigin().z();
+
+    odom_trans.transform.rotation.x = tf_transform.getRotation().x();
+    odom_trans.transform.rotation.y = tf_transform.getRotation().y();
+    odom_trans.transform.rotation.z = tf_transform.getRotation().z();
+    odom_trans.transform.rotation.w = tf_transform.getRotation().w();
 
     transformBroadcaster_ptr->sendTransform(odom_trans);
 }
