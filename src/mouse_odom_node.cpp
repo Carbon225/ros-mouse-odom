@@ -1,7 +1,9 @@
 #include <ros/ros.h>
 
 #include <nav_msgs/Odometry.h>
+#include <geometry_msgs/TransformStamped.h>
 #include <tf2/LinearMath/Quaternion.h>
+#include <tf2_ros/transform_broadcaster.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -16,7 +18,12 @@ int main(int argc, char **argv) {
     ros::init(argc, argv, "mouse_odom_node");
     ros::NodeHandle nh;
 
-    ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("mouse_odom", 256);
+    tf2_ros::TransformBroadcaster transformBroadcaster;
+
+    std::string mouse_name = "base_link";
+    ros::param::get("~frame_id", mouse_name);
+
+    ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>(mouse_name, 128);
 
     bool event_mode = false;
     if (!ros::param::get("~event_mode", event_mode)) {
@@ -87,6 +94,19 @@ int main(int argc, char **argv) {
         std::string mouse_frame = "base_link";
         if (!ros::param::get("~frame_id", mouse_frame))
             ROS_WARN("No frame_id for mouse %s", device_name.c_str());
+
+        geometry_msgs::TransformStamped point_tf;
+
+        point_tf.header.stamp = current_time;
+        point_tf.header.frame_id = mouse_frame;
+        point_tf.child_frame_id = mouse_frame + "/point";
+
+        point_tf.transform.translation.x = -x;
+        point_tf.transform.translation.y = -y;
+
+        point_tf.transform.rotation.w = 1.f;
+
+        transformBroadcaster.sendTransform(point_tf);
 
         nav_msgs::Odometry odom;
         odom.header.stamp = current_time;
