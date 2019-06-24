@@ -74,12 +74,10 @@ void odomCallback(const nav_msgs::Odometry trackedPoint)
     // mouse -> tracked odom point
     X.setX(trackedPoint.pose.pose.position.x);
     X.setY(trackedPoint.pose.pose.position.y);
-    ROS_DEBUG("Xx = %g Xy = %g", X.getX(), X.getY());
 
     // base_link -> mouse
     P.setX(mouseTransform.transform.translation.x);
     P.setY(mouseTransform.transform.translation.y);
-    ROS_DEBUG("Px = %g Py = %g", P.getX(), P.getY());
 
     // base_link -> odom
     {
@@ -95,8 +93,6 @@ void odomCallback(const nav_msgs::Odometry trackedPoint)
         O.setX(odomTransform.transform.translation.x);
         O.setY(odomTransform.transform.translation.y);
         alphaO = yaw;
-
-        ROS_DEBUG("Ox = %g Oy = %g Oa = %g", O.getX(), O.getY(), alphaO);
     }
 
     // rotate mouse pos to odom frame
@@ -128,7 +124,21 @@ void odomCallback(const nav_msgs::Odometry trackedPoint)
     tf_transform.setRotation(tf_quat);
     tf_transform.setOrigin(T);
 
-    ROS_DEBUG("Tx = %g Ty = %g", tf_transform.getOrigin().getX(), tf_transform.getOrigin().getY());
+    ROS_DEBUG(
+            "Px=%g Py=%g\n"
+            "Xx=%g Xy=%g\n"
+            "Ox=%g Oy=%g a=%g\n"
+            "Ax=%g Ay=%g\n"
+            "Bx=%g By=%g\n"
+            "Cx=%g Cy=%g a=%g\n"
+            "Tx=%g Ty=%g a=%g\n",
+            P.getX(), P.getY(),
+            X.getX(), X.getY(),
+            O.getX(), O.getY(), alphaO,
+            A.getX(), A.getY(),
+            B.getX(), B.getY(),
+            C.getX(), C.getY(), alphaC,
+            T.getX(), T.getY(), alphaT);
 
     // inverse transform to get odom -> base_link
     tf_transform = tf_transform.inverse();
