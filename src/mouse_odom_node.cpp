@@ -25,11 +25,9 @@ int main(int argc, char **argv) {
 
     double x = 0.f;
     double y = 0.f;
-    double th = 0.f;
 
     double vx = 0.f;
     double vy = 0.f;
-    double vth = 0.f;
 
     ros::Time current_time, last_time;
     current_time = ros::Time::now();
@@ -65,7 +63,6 @@ int main(int argc, char **argv) {
 
         double delta_x = DOTS2M((double)deltaPos.x, dpi);
         double delta_y = DOTS2M((double)deltaPos.y, dpi);
-        double delta_th = vth * dt;
 
         // calculate speed
         vx = delta_x / dt;
@@ -73,16 +70,6 @@ int main(int argc, char **argv) {
 
         x += delta_x;
         y += delta_y;
-        th += delta_th;
-
-        tf2::Quaternion tf_quat;
-        tf_quat.setRPY(0.f, 0.f, th);
-
-        geometry_msgs::Quaternion odom_quat;
-        odom_quat.x = tf_quat.x();
-        odom_quat.y = tf_quat.y();
-        odom_quat.z = tf_quat.z();
-        odom_quat.w = tf_quat.w();
 
         std::string mouse_frame = "base_link";
         if (!ros::param::get("~frame_id", mouse_frame))
@@ -94,16 +81,9 @@ int main(int argc, char **argv) {
         odom.header.frame_id = mouse_frame;
         odom.child_frame_id = "odom";
 
-        //set the position
-        odom.pose.pose.position.x = -x;
-        odom.pose.pose.position.y = -y;
-        odom.pose.pose.position.z = 0; // ignore
-        odom.pose.pose.orientation = odom_quat; // ignore
-
-        //set the velocity
-        odom.twist.twist.linear.x = -vx;
-        odom.twist.twist.linear.y = -vy;
-        odom.twist.twist.angular.z = vth; // ignore
+        //set the relative translation
+        odom.twist.twist.linear.x = -delta_x;
+        odom.twist.twist.linear.y = -delta_y;
 
         //publish the message
         odom_pub.publish(odom);

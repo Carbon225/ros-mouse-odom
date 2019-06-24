@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
 void odomCallback(const nav_msgs::Odometry trackedPoint)
 {
     geometry_msgs::TransformStamped mouseTransform;
-    geometry_msgs::TransformStamped odomTransform;
+    geometry_msgs::TransformStamped baseLinkTransform;
     try {
         mouseTransform = tfBuffer.lookupTransform("base_link", trackedPoint.header.frame_id, ros::Time(0));
     }
@@ -48,7 +48,7 @@ void odomCallback(const nav_msgs::Odometry trackedPoint)
     }
 
     try {
-        odomTransform = tfBuffer.lookupTransform("base_link", trackedPoint.child_frame_id, ros::Time(0));
+        baseLinkTransform = tfBuffer.lookupTransform(trackedPoint.child_frame_id, "base_link", ros::Time(0));
     }
     catch (tf2::TransformException &ex) {
         ROS_WARN("%s",ex.what());
@@ -66,82 +66,62 @@ void odomCallback(const nav_msgs::Odometry trackedPoint)
         return;
     }
 
-    double alphaT = 0.f;
-    double alphaC = 0.f;
-    double alphaO = 0.f;
-    tf2::Vector3 P, X, O, T, A, B, C;
-
-    // mouse -> tracked odom point
-    X.setX(trackedPoint.pose.pose.position.x);
-    X.setY(trackedPoint.pose.pose.position.y);
-
     // base_link -> mouse
+    tf2::Vector3 P;
     P.setX(mouseTransform.transform.translation.x);
     P.setY(mouseTransform.transform.translation.y);
 
-    // base_link -> odom
+    // mouse -> tracked point
+    tf2::Vector3 X;
+    X.setX(trackedPoint.twist.twist.linear.x);
+    X.setY(trackedPoint.twist.twist.linear.y);
+
+    // how the ground moved
+    tf2::Transform ground_tf;
+    tf2::Vector3 T;
+    double aT;
+
+    aT = DIRECTED_ANGLE(P, (P + X));
+    T = P + X - P.rotate(tf2::Vector3(0.f, 0.f, 1.f), aT);
+    ground_tf.setOrigin(T);
     {
-        tf2::Quaternion odom_quat;
-        odom_quat.setX(odomTransform.transform.rotation.x);
-        odom_quat.setY(odomTransform.transform.rotation.y);
-        odom_quat.setZ(odomTransform.transform.rotation.z);
-        odom_quat.setW(odomTransform.transform.rotation.w);
-
-        double roll, pitch, yaw;
-        tf2::Matrix3x3(odom_quat).getRPY(roll, pitch, yaw);
-
-        O.setX(odomTransform.transform.translation.x);
-        O.setY(odomTransform.transform.translation.y);
-        alphaO = yaw;
+        tf2::Quaternion tf_quat;
+        tf_quat.setRPY(0.f, 0.f, aT);
+        ground_tf.setRotation(tf_quat);
     }
 
-    // rotate mouse pos to odom frame
-    A.setX( cos(alphaO)*P.getX() - sin(alphaO)*P.getY() );
-    A.setY( sin(alphaO)*P.getX() + cos(alphaO)*P.getY() );
+    // inverse to get base_link movement
+    tf2::Transform base_link_move = ground_tf.inverse();
 
-    // mouse in odom frame -> tracked point
-    B = X - O - A;
+    // odom -> old base_link
+    tf2::Transform old_base_link_tf;
+    {
+        tf2::Vector3 vec;
+        vec.setX(baseLinkTransform.transform.translation.x);
+        vec.setY(baseLinkTransform.transform.translation.y);
 
-    // odom -> new odom
-    alphaC = DIRECTED_ANGLE(A, (A + B));
+        tf2::Quaternion quat;
 
-    tf2::Vector3 rotA;
-    rotA.setX( cos(alphaC)*A.getX() - sin(alphaC)*A.getY() );
-    rotA.setY( sin(alphaC)*A.getX() + cos(alphaC)*A.getY() );
+        quat.setX(baseLinkTransform.transform.rotation.x);
+        quat.setY(baseLinkTransform.transform.rotation.y);
+        quat.setZ(baseLinkTransform.transform.rotation.z);
+        quat.setW(baseLinkTransform.transform.rotation.w);
 
-    C = A + B - rotA;
+        old_base_link_tf.setOrigin(vec);
+        old_base_link_tf.setRotation(quat);
+    }
 
-    // base_link -> new odom
-    alphaT = alphaO + alphaC;
-    T = O + C;
-
-    // transform base_link -> odom
-    tf2::Transform tf_transform;
-
-    tf2::Quaternion tf_quat;
-    tf_quat.setRPY(0.f, 0.f, alphaT);
-
-    tf_transform.setRotation(tf_quat);
-    tf_transform.setOrigin(T);
+    // odom -> new base_link
+    tf2::Transform new_base_link_tf;
+    new_base_link_tf = old_base_link_tf * base_link_move;
 
     ROS_DEBUG(
             "Px=%g Py=%g\n"
             "Xx=%g Xy=%g\n"
-            "Ox=%g Oy=%g a=%g\n"
-            "Ax=%g Ay=%g\n"
-            "Bx=%g By=%g\n"
-            "Cx=%g Cy=%g a=%g\n"
             "Tx=%g Ty=%g a=%g\n",
             P.getX(), P.getY(),
             X.getX(), X.getY(),
-            O.getX(), O.getY(), alphaO,
-            A.getX(), A.getY(),
-            B.getX(), B.getY(),
-            C.getX(), C.getY(), alphaC,
-            T.getX(), T.getY(), alphaT);
-
-    // inverse transform to get odom -> base_link
-    tf_transform = tf_transform.inverse();
+            T.getX(), T.getY(), aT);
 
     // compose transform message
     geometry_msgs::TransformStamped odom_trans;
@@ -149,14 +129,13 @@ void odomCallback(const nav_msgs::Odometry trackedPoint)
     odom_trans.header.frame_id = trackedPoint.child_frame_id;
     odom_trans.child_frame_id = "base_link";
 
-    odom_trans.transform.translation.x = tf_transform.getOrigin().x();
-    odom_trans.transform.translation.y = tf_transform.getOrigin().y();
-    // odom_trans.transform.translation.z = tf_transform.getOrigin().z();
+    odom_trans.transform.translation.x = new_base_link_tf.getOrigin().x();
+    odom_trans.transform.translation.y = new_base_link_tf.getOrigin().y();
 
-    odom_trans.transform.rotation.x = tf_transform.getRotation().x();
-    odom_trans.transform.rotation.y = tf_transform.getRotation().y();
-    odom_trans.transform.rotation.z = tf_transform.getRotation().z();
-    odom_trans.transform.rotation.w = tf_transform.getRotation().w();
+    odom_trans.transform.rotation.x = new_base_link_tf.getRotation().x();
+    odom_trans.transform.rotation.y = new_base_link_tf.getRotation().y();
+    odom_trans.transform.rotation.z = new_base_link_tf.getRotation().z();
+    odom_trans.transform.rotation.w = new_base_link_tf.getRotation().w();
 
     transformBroadcaster_ptr->sendTransform(odom_trans);
 }
