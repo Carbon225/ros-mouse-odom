@@ -28,9 +28,11 @@ int main(int argc, char **argv) {
     tf2_ros::TransformListener tfListener(tfBuffer);
     tf2_ros::TransformBroadcaster transformBroadcaster;
 
-    std::string mouse_frame = "base_link";
-    if (!ros::param::get("~frame_id", mouse_frame))
-        ROS_WARN("No frame_id for mouse");
+    std::string mouse_frame;
+    if (!ros::param::get("~frame_id", mouse_frame)) {
+        ROS_ERROR("No frame_id for mouse");
+        return 1;
+    }
 
     ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>(mouse_frame + "/odom", 256);
 
@@ -50,6 +52,8 @@ int main(int argc, char **argv) {
     int in = -1;
     in = open(device_name.c_str(), O_RDONLY);
 
+    tf2::Vector3 mouse_point;
+
     MouseMove deltaPos;
 
     while (ros::ok()) {
@@ -60,129 +64,46 @@ int main(int argc, char **argv) {
 
         ros::Time current_time = ros::Time::now();
 
-        ROS_DEBUG("x : %d | y : %d \n", deltaPos.x, deltaPos.y);
+        // ROS_DEBUG("x : %d | y : %d \n", deltaPos.x, deltaPos.y);
 
         // convert DPI to meters
         int dpi = 1000;
         if (!ros::param::get("~dpi", dpi))
             ROS_WARN("DPI not set");
 
-        double delta_x = DOTS2M((double)deltaPos.x, dpi);
-        double delta_y = DOTS2M((double)deltaPos.y, dpi);
+        tf2::Vector3 X;
 
+        X.setX( -DOTS2M((double)deltaPos.x, dpi) );
+        X.setY( -DOTS2M((double)deltaPos.y, dpi) );
 
-
-        if (!ros::param::get("~frame_id", mouse_frame))
-            ROS_WARN("No frame_id for mouse %s", device_name.c_str());
-
-        tf2::Transform mouse_tf;
-        try {
-            geometry_msgs::TransformStamped mouseTransform;
-            mouseTransform = tfBuffer.lookupTransform("base_link", mouse_frame, ros::Time(0));
-
-            tf2::Vector3 v;
-            v.setX(mouseTransform.transform.translation.x);
-            v.setY(mouseTransform.transform.translation.y);
-            v.setZ(mouseTransform.transform.translation.z);
-            mouse_tf.setOrigin(v);
-
-            tf2::Quaternion q;
-            q.setX(mouseTransform.transform.rotation.x);
-            q.setY(mouseTransform.transform.rotation.y);
-            q.setZ(mouseTransform.transform.rotation.z);
-            q.setW(mouseTransform.transform.rotation.w);
-            mouse_tf.setRotation(q);
-        }
-        catch (tf2::TransformException &ex) {
-            ROS_ERROR("%s",ex.what());
-            continue;
-        }
-
-        tf2::Transform base_link_tf;
-        try {
-            geometry_msgs::TransformStamped baseLinkTransform;
-            baseLinkTransform = tfBuffer.lookupTransform("odom", "base_link", ros::Time(0));
-
-            tf2::Vector3 v;
-            v.setX(baseLinkTransform.transform.translation.x);
-            v.setY(baseLinkTransform.transform.translation.y);
-            v.setZ(baseLinkTransform.transform.translation.z);
-            base_link_tf.setOrigin(v);
-
-            tf2::Quaternion q;
-            q.setX(baseLinkTransform.transform.rotation.x);
-            q.setY(baseLinkTransform.transform.rotation.y);
-            q.setZ(baseLinkTransform.transform.rotation.z);
-            q.setW(baseLinkTransform.transform.rotation.w);
-            base_link_tf.setRotation(q);
-        }
-        catch (tf2::TransformException &ex) {
-            ROS_WARN("%s",ex.what());
-
-            // set default odom -> base_link transform
-            tf2::Vector3 v(0.f, 0.f, 0.f);
-            base_link_tf.setOrigin(v);
-
-            tf2::Quaternion q;
-            q.setW(1.f);
-            base_link_tf.setRotation(q);
-        }
-
-
-
-        // mouse movement
-        tf2::Vector3 X(delta_x, delta_y, 0.f);
-
-        // base_link movement
-        double aT = DIRECTED_ANGLE((mouse_tf.getOrigin()), (mouse_tf.getOrigin() + X));
-        tf2::Vector3 T;
-
-        tf2::Vector3 rotP;
-        rotP.setX( cos(aT)*mouse_tf.getOrigin().x() - sin(aT)*mouse_tf.getOrigin().y() );
-        rotP.setY( sin(aT)*mouse_tf.getOrigin().x() + cos(aT)*mouse_tf.getOrigin().y() );
-
-        T = mouse_tf.getOrigin() + X - rotP;
-
-        ROS_DEBUG("Tx = %g Ty = %g aT = %g", T.x(), T.y(), aT);
-
-        double aBase;
-        {
-            tf2::Quaternion q(
-                    base_link_tf.getRotation().x(),
-                    base_link_tf.getRotation().y(),
-                    base_link_tf.getRotation().z(),
-                    base_link_tf.getRotation().w());
-            double roll, pitch;
-            tf2::Matrix3x3(q).getRPY(roll, pitch, aBase);
-        }
-
-        tf2::Vector3 rotT;
-        rotT.setX( cos(aBase)*T.x() - sin(aBase)*T.y() );
-        rotT.setY( sin(aBase)*T.x() + cos(aBase)*T.y() );
-
-        base_link_tf.setOrigin(base_link_tf.getOrigin() + rotT);
-        {
-            tf2::Quaternion q;
-            q.setRPY(0.f, 0.f, aBase + aT);
-
-            base_link_tf.setRotation(q);
-        }
+        mouse_point += X;
 
         // compose transform message
-        geometry_msgs::TransformStamped odom_trans;
-        odom_trans.header.stamp = current_time;
-        odom_trans.header.frame_id = "odom";
-        odom_trans.child_frame_id = "base_link";
+        {
+            geometry_msgs::TransformStamped tf_msg;
+            tf_msg.header.stamp = current_time;
+            tf_msg.header.frame_id = mouse_frame;
+            tf_msg.child_frame_id = mouse_frame + "/point";
 
-        odom_trans.transform.translation.x = base_link_tf.getOrigin().x();
-        odom_trans.transform.translation.y = base_link_tf.getOrigin().y();
+            tf_msg.transform.translation.x = mouse_point.x();
+            tf_msg.transform.translation.y = mouse_point.y();
 
-        odom_trans.transform.rotation.x = base_link_tf.getRotation().x();
-        odom_trans.transform.rotation.y = base_link_tf.getRotation().y();
-        odom_trans.transform.rotation.z = base_link_tf.getRotation().z();
-        odom_trans.transform.rotation.w = base_link_tf.getRotation().w();
+            tf_msg.transform.rotation.w = 1.f;
 
-        transformBroadcaster.sendTransform(odom_trans);
+            transformBroadcaster.sendTransform(tf_msg);
+
+            nav_msgs::Odometry odom_msg;
+            odom_msg.header.stamp = current_time;
+            odom_msg.header.frame_id = mouse_frame;
+            odom_msg.child_frame_id = mouse_frame + "/point";
+
+            odom_msg.pose.pose.position.x = mouse_point.x();
+            odom_msg.pose.pose.position.y = mouse_point.y();
+
+            odom_msg.pose.pose.orientation.w = 1.f;
+
+            odom_pub.publish(odom_msg);
+        }
 
         ros::spinOnce();
     }
