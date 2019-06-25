@@ -143,14 +143,29 @@ int main(int argc, char **argv) {
 
         T = mouse_tf.getOrigin() + X - rotP;
 
-        ROS_DEBUG("aT = %g", aT);
+        ROS_DEBUG("Tx = %g Ty = %g aT = %g", T.x(), T.y(), aT);
 
-        base_link_tf.setOrigin(base_link_tf.getOrigin() + T);
+        double aBase;
+        {
+            tf2::Quaternion q(
+                    base_link_tf.getRotation().x(),
+                    base_link_tf.getRotation().y(),
+                    base_link_tf.getRotation().z(),
+                    base_link_tf.getRotation().w());
+            double roll, pitch;
+            tf2::Matrix3x3(q).getRPY(roll, pitch, aBase);
+        }
+
+        tf2::Vector3 rotT;
+        rotT.setX( cos(aBase)*T.x() - sin(aBase)*T.y() );
+        rotT.setY( sin(aBase)*T.x() + cos(aBase)*T.y() );
+
+        base_link_tf.setOrigin(base_link_tf.getOrigin() + rotT);
         {
             tf2::Quaternion q;
-            q.setRPY(0.f, 0.f, aT);
+            q.setRPY(0.f, 0.f, aBase + aT);
 
-            base_link_tf.setRotation(base_link_tf.getRotation() * q);
+            base_link_tf.setRotation(q);
         }
 
         // compose transform message
