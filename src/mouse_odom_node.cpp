@@ -73,8 +73,8 @@ int main(int argc, char **argv) {
 
         tf2::Vector3 X;
 
-        X.setX( -DOTS2M((double)deltaPos.x, dpi) );
-        X.setY( -DOTS2M((double)deltaPos.y, dpi) );
+        X.setX( DOTS2M((double)deltaPos.x, dpi) );
+        X.setY( DOTS2M((double)deltaPos.y, dpi) );
 
         mouse_point += X;
 
@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
             geometry_msgs::TransformStamped tf_msg;
             tf_msg.header.stamp = current_time;
             tf_msg.header.frame_id = mouse_frame;
-            tf_msg.child_frame_id = mouse_frame + "/point";
+            tf_msg.child_frame_id = mouse_frame + "/odom";
 
             tf_msg.transform.translation.x = mouse_point.x();
             tf_msg.transform.translation.y = mouse_point.y();
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
             nav_msgs::Odometry odom_msg;
             odom_msg.header.stamp = current_time;
             odom_msg.header.frame_id = mouse_frame;
-            odom_msg.child_frame_id = mouse_frame + "/point";
+            odom_msg.child_frame_id = mouse_frame + "/odom";
 
             odom_msg.pose.pose.position.x = mouse_point.x();
             odom_msg.pose.pose.position.y = mouse_point.y();
