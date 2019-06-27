@@ -1,7 +1,14 @@
 #include <ros/ros.h>
 
 #include <nav_msgs/Odometry.h>
+#include <geometry_msgs/TransformStamped.h>
+
+#include <tf2/LinearMath/Vector3.h>
 #include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Transform.h>
+
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/transform_listener.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -9,6 +16,7 @@
 #include <eventX_reader.h>
 
 
+#define DIRECTED_ANGLE(vector1, vector2) atan2(vector2.getY(), vector2.getX()) - atan2(vector1.getY(), vector1.getX())
 #define DOTS2M(dots, dpi) dots * 0.0254 / dpi
 
 
@@ -16,35 +24,37 @@ int main(int argc, char **argv) {
     ros::init(argc, argv, "mouse_odom_node");
     ros::NodeHandle nh;
 
-    ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>("mouse_odom", 256);
+    tf2_ros::Buffer tfBuffer;
+    tf2_ros::TransformListener tfListener(tfBuffer);
+    tf2_ros::TransformBroadcaster transformBroadcaster;
+
+    std::string mouse_frame;
+    if (!ros::param::get("~frame_id", mouse_frame)) {
+        ROS_ERROR("No frame_id for mouse");
+        return 1;
+    }
+
+    ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>(mouse_frame + "/odom", 256);
 
     bool event_mode = false;
     if (!ros::param::get("~event_mode", event_mode)) {
         event_mode = true;
     }
 
-    double x = 0.f;
-    double y = 0.f;
-    double th = 0.f;
-
-    double vx = 0.f;
-    double vy = 0.f;
-    double vth = 0.f;
-
-    ros::Time current_time, last_time;
-    current_time = ros::Time::now();
-    last_time = current_time;
-
-    int in = -1;
-
-    MouseMove deltaPos;
-
     std::string device_name;
-    ros::param::get("~device", device_name);
+    if (!ros::param::get("~device", device_name)) {
+        ROS_ERROR("No device set for mouse");
+        return 1;
+    }
 
     ROS_INFO("Opening %s", device_name.c_str());
 
+    int in = -1;
     in = open(device_name.c_str(), O_RDONLY);
+
+    tf2::Vector3 mouse_point;
+
+    MouseMove deltaPos;
 
     while (ros::ok()) {
         if (!event_mode)
@@ -52,63 +62,48 @@ int main(int argc, char **argv) {
         else
             deltaPos = getMouseMoveEvent(in);
 
-        current_time = ros::Time::now();
+        ros::Time current_time = ros::Time::now();
 
-        ROS_DEBUG("x : %d | y : %d \n", deltaPos.x, deltaPos.y);
-
-        double dt = (current_time - last_time).toSec();
+        // ROS_DEBUG("x : %d | y : %d \n", deltaPos.x, deltaPos.y);
 
         // convert DPI to meters
         int dpi = 1000;
         if (!ros::param::get("~dpi", dpi))
             ROS_WARN("DPI not set");
 
-        double delta_x = DOTS2M((double)deltaPos.x, dpi);
-        double delta_y = DOTS2M((double)deltaPos.y, dpi);
-        double delta_th = vth * dt;
+        tf2::Vector3 X;
 
-        // calculate speed
-        vx = delta_x / dt;
-        vy = delta_y / dt;
+        X.setX( DOTS2M((double)deltaPos.x, dpi) );
+        X.setY( DOTS2M((double)deltaPos.y, dpi) );
 
-        x += delta_x;
-        y += delta_y;
-        th += delta_th;
+        mouse_point += X;
 
-        tf2::Quaternion tf_quat;
-        tf_quat.setRPY(0.f, 0.f, th);
+        // compose transform message
+        {
+            geometry_msgs::TransformStamped tf_msg;
+            tf_msg.header.stamp = current_time;
+            tf_msg.header.frame_id = mouse_frame;
+            tf_msg.child_frame_id = mouse_frame + "/odom";
 
-        geometry_msgs::Quaternion odom_quat;
-        odom_quat.x = tf_quat.x();
-        odom_quat.y = tf_quat.y();
-        odom_quat.z = tf_quat.z();
-        odom_quat.w = tf_quat.w();
+            tf_msg.transform.translation.x = mouse_point.x();
+            tf_msg.transform.translation.y = mouse_point.y();
 
-        std::string mouse_frame = "base_link";
-        if (!ros::param::get("~frame_id", mouse_frame))
-            ROS_WARN("No frame_id for mouse %s", device_name.c_str());
+            tf_msg.transform.rotation.w = 1.f;
 
-        nav_msgs::Odometry odom;
-        odom.header.stamp = current_time;
-        // how the ground moved in relation to the mouse
-        odom.header.frame_id = mouse_frame;
-        odom.child_frame_id = "odom";
+            transformBroadcaster.sendTransform(tf_msg);
 
-        //set the position
-        odom.pose.pose.position.x = -x;
-        odom.pose.pose.position.y = -y;
-        odom.pose.pose.position.z = 0; // ignore
-        odom.pose.pose.orientation = odom_quat; // ignore
+            nav_msgs::Odometry odom_msg;
+            odom_msg.header.stamp = current_time;
+            odom_msg.header.frame_id = mouse_frame;
+            odom_msg.child_frame_id = mouse_frame + "/odom";
 
-        //set the velocity
-        odom.twist.twist.linear.x = -vx;
-        odom.twist.twist.linear.y = -vy;
-        odom.twist.twist.angular.z = vth; // ignore
+            odom_msg.pose.pose.position.x = mouse_point.x();
+            odom_msg.pose.pose.position.y = mouse_point.y();
 
-        //publish the message
-        odom_pub.publish(odom);
+            odom_msg.pose.pose.orientation.w = 1.f;
 
-        last_time = current_time;
+            odom_pub.publish(odom_msg);
+        }
 
         ros::spinOnce();
     }
