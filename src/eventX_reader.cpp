@@ -20,11 +20,11 @@ MouseMove getMouseMoveEvent(int mouseToCapture)
         case EV_REL:
             switch (ie.code) {
                 case REL_X:
-                    deltaMove.x = ie.value;
+                    deltaMove.y = ie.value;
                     break;
 
                 case REL_Y:
-                    deltaMove.y = ie.value;
+                    deltaMove.x = ie.value;
                     break;
 
                 case REL_WHEEL:
