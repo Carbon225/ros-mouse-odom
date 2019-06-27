@@ -1,0 +1,29 @@
+<launch>
+    <node pkg="mouse_odom" type="mouse_odom_node" name="mouse1_node" respawn="true">
+        <param name="frame_id" type="string" value="mouse1"/>
+        <param name="dpi" type="int" value="100"/>
+        <param name="device" type="string" value="/dev/input/event0"/>
+        <param name="event_mode" type="bool" value="true"/>
+    </node>
+
+    <node pkg="mouse_odom" type="mouse_odom_node" name="mouse2_node" respawn="true">
+        <param name="frame_id" type="string" value="mouse2"/>
+        <param name="dpi" type="int" value="100"/>
+        <param name="device" type="string" value="/dev/input/event1"/>
+        <param name="event_mode" type="bool" value="true"/>
+    </node>
+
+    <node pkg="mouse_odom" type="mouse_odom_node" name="mouse3_node" respawn="true">
+        <param name="frame_id" type="string" value="mouse3"/>
+        <param name="dpi" type="int" value="100"/>
+        <param name="device" type="string" value="/dev/input/event2"/>
+        <param name="event_mode" type="bool" value="true"/>
+    </node>
+
+    <node pkg="mouse_odom" type="mouse_odom_node" name="mouse4_node" respawn="true">
+        <param name="frame_id" type="string" value="mouse4"/>
+        <param name="dpi" type="int" value="100"/>
+        <param name="device" type="string" value="/dev/input/event3"/>
+        <param name="event_mode" type="bool" value="true"/>
+    </node>
+</launch>
